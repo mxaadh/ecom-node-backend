@@ -9,7 +9,7 @@ const userSchema = new mongoose.Schema(
     gender: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    isAdmin: { type: Boolean, default: false },
+    isAdmin: { type: Boolean, default: false }, // 0: user, 1: super-admin, 2: vendor
   },
   { timestamps: true }
 );
