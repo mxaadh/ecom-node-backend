@@ -5,6 +5,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  getCategoryCounters,
 } from "../controllers/productController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
@@ -12,6 +13,7 @@ const router = express.Router();
 
 // Public route
 router.get("/", getProducts);
+router.get("/counters", getCategoryCounters);
 router.get("/:id", getProductById);
 
 // Protected routes (only logged-in users)

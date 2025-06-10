@@ -74,6 +74,48 @@ export const createProduct = async (req, res) => {
   res.status(201).json(savedProduct);
 };
 
+export const getCategoryCounters = async (req, res) => {
+  try {
+    const categoryCounters = await Product.aggregate([
+      {
+        $group: {
+          _id: "$category",
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { _id: 1 },
+      },
+    ]);
+
+    // Get total count
+    const totalCount = await Product.countDocuments();
+
+    // Format response
+    const counters = {
+      total: totalCount,
+      categories: {},
+    };
+
+    // Convert array to object format
+    categoryCounters.forEach((item) => {
+      counters.categories[item._id || "Uncategorized"] = item.count;
+    });
+
+    res.json({
+      success: true,
+      data: counters,
+    });
+  } catch (error) {
+    console.error("Error fetching category counters:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
 export const processWishlistAndSendEmails = async (productId) => {
   try {
     // 1. Find all wishlist entries for specific product
