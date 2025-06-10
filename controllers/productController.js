@@ -1,4 +1,6 @@
 import Product from "../models/Product.js";
+import Wishlist from "../models/Wishlist.js";
+import { transporter } from "../config/email.js";
 
 export const getProducts = async (req, res) => {
   // Extract all possible query parameters
@@ -72,14 +74,107 @@ export const createProduct = async (req, res) => {
   res.status(201).json(savedProduct);
 };
 
+export const processWishlistAndSendEmails = async (productId) => {
+  try {
+    // 1. Find all wishlist entries for specific product
+    const wishlistEntries = await Wishlist.find({ product: productId });
+
+    if (wishlistEntries.length === 0) {
+      console.log("No wishlist entries found for this product");
+      return;
+    }
+
+    // 2. Extract emails and remove duplicates
+    const allEmails = wishlistEntries.map((entry) => entry.email);
+    const uniqueEmails = [...new Set(allEmails)];
+
+    console.log(
+      `Found ${allEmails.length} total entries, ${uniqueEmails.length} unique emails`
+    );
+
+    // 3. Get product details
+    const product = await Product.findById(productId);
+
+    if (!product) {
+      console.log("Product not found for email notifications");
+      return;
+    }
+
+    // 4. Send email to each unique email
+    const emailPromises = uniqueEmails.map(async (email) => {
+      try {
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: "Product Update - Your Wishlist Item",
+          html: `
+            <h3>Wishlist Notification</h3>
+            <p>Hi there!</p>
+            <p>Your wishlist item has been updated and bidding time will end soon:</p>
+            <p><strong>Product:</strong> ${product?.title || "Product"}</p>
+            <p>
+              <strong>Product Link:</strong>
+              <a href="${process.env.CORS_ORIGIN}/detail/${
+            product?._id
+          }" target="_blank">
+                ${product?.title || "Product"} Link
+              </a> 
+            </p>
+            <p><strong>End Date:</strong> ${
+              product?.endDate || "01-01-1997"
+            }</p>
+            <p><strong>End Time:</strong> ${product?.endHour || "00"}:${
+            product?.endMinute || "00"
+          }</p>
+            <p><strong>Price:</strong> $${product?.price || "N/A"}</p>
+            <p>Thank you for your interest!</p>
+          `,
+        });
+        console.log(`Email sent to: ${email}`);
+        await Wishlist.deleteMany({ email, product: productId });
+        return { email, status: "sent" };
+      } catch (error) {
+        console.error(`Failed to send email to ${email}:`, error);
+        return { email, status: "failed", error: error.message };
+      }
+    });
+
+    const results = await Promise.all(emailPromises);
+
+    return {
+      totalEntries: allEmails.length,
+      uniqueEmails: uniqueEmails.length,
+      emailResults: results,
+    };
+  } catch (error) {
+    console.error("Error processing wishlist:", error);
+    throw error;
+  }
+};
+
 export const updateProduct = async (req, res) => {
   try {
     const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
     });
-    product
-      ? res.json(product)
-      : res.status(404).json({ message: "Product not found" });
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // Send response IMMEDIATELY to frontend
+    res.json(product);
+
+    // Process emails in BACKGROUND (don't await)
+    if (req.body.endDate) {
+      processWishlistAndSendEmails(req.params.id)
+        .then((result) => {
+          console.log("Emails sent successfully:", result);
+        })
+        .catch((emailError) => {
+          console.error("Email sending failed:", emailError);
+        });
+    }
   } catch (error) {
     res.status(400).json({ message: "Invalid update" });
   }

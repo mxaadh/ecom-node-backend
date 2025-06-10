@@ -1,6 +1,7 @@
 import express from "express";
 import {
   createBid,
+  createWishlist,
   getBids,
   getBidsByProductId,
 } from "../controllers/bidController.js";
@@ -13,6 +14,7 @@ router.get("/", getBids);
 router.get("/:productId", getBidsByProductId);
 
 // Protected routes (only logged-in users)
+router.post("/wishlist", protect, createWishlist);
 router.post("/", protect, createBid);
 
 export default router;
