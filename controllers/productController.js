@@ -12,6 +12,7 @@ export const getProducts = async (req, res) => {
     maxPrice,
     inStock, // boolean
     search, // text search
+    auctionStatus, // 'active', 'expired', or 'all'
   } = req.query;
 
   // Build the query object dynamically
@@ -31,6 +32,86 @@ export const getProducts = async (req, res) => {
     query.stockQuantity = { $gt: 0 };
   }
 
+  // Filter by auction end date status
+  if (auctionStatus && auctionStatus !== "all") {
+    // Only apply filter to records that have auction fields
+    const auctionQuery = {
+      endDate: { $exists: true },
+      endHour: { $exists: true },
+      endMinute: { $exists: true },
+    };
+
+    if (auctionStatus === "active") {
+      // Show only auctions that haven't ended yet
+      auctionQuery.$expr = {
+        $gt: [
+          {
+            $dateFromString: {
+              dateString: {
+                $concat: [
+                  "$endDate",
+                  "T",
+                  {
+                    $cond: [
+                      { $lt: [{ $toInt: "$endHour" }, 10] },
+                      { $concat: ["0", "$endHour"] },
+                      "$endHour",
+                    ],
+                  },
+                  ":",
+                  {
+                    $cond: [
+                      { $lt: [{ $toInt: "$endMinute" }, 10] },
+                      { $concat: ["0", "$endMinute"] },
+                      "$endMinute",
+                    ],
+                  },
+                  ":00.000Z",
+                ],
+              },
+            },
+          },
+          new Date(),
+        ],
+      };
+    } else if (auctionStatus === "expired") {
+      // Show only auctions that have ended
+      auctionQuery.$expr = {
+        $lte: [
+          {
+            $dateFromString: {
+              dateString: {
+                $concat: [
+                  "$endDate",
+                  "T",
+                  {
+                    $cond: [
+                      { $lt: [{ $toInt: "$endHour" }, 10] },
+                      { $concat: ["0", "$endHour"] },
+                      "$endHour",
+                    ],
+                  },
+                  ":",
+                  {
+                    $cond: [
+                      { $lt: [{ $toInt: "$endMinute" }, 10] },
+                      { $concat: ["0", "$endMinute"] },
+                      "$endMinute",
+                    ],
+                  },
+                  ":00.000Z",
+                ],
+              },
+            },
+          },
+          new Date(),
+        ],
+      };
+    }
+
+    Object.assign(query, auctionQuery);
+  }
+
   // Build the options object for sorting and limiting
   const options = {};
 
@@ -47,14 +128,22 @@ export const getProducts = async (req, res) => {
     query.$text = { $search: search };
   }
 
-  // Execute the query with all conditions
-  const products = await Product.find(query, null, options);
+  try {
+    // Execute the query with all conditions
+    const products = await Product.find(query, null, options);
 
-  res.json({
-    success: true,
-    count: products.length,
-    data: products,
-  });
+    res.json({
+      success: true,
+      count: products.length,
+      data: products,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching products",
+      error: error.message,
+    });
+  }
 };
 
 export const getProductById = async (req, res) => {
